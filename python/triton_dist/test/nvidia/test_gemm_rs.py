@@ -34,7 +34,7 @@ from triton_dist.kernels.nvidia import create_gemm_rs_context, gemm_rs
 from triton_dist.profiler_utils import group_profile, perf_func
 from triton_dist.test.utils import assert_allclose
 from triton_dist.utils import (dist_print, initialize_distributed, finalize_distributed,
-                               wait_until_max_gpu_clock_or_warning, rand_tensor)
+                               wait_until_max_gpu_clock_or_warning, rand_tensor, print_ordered)
 from triton_dist.kernels.nvidia.gemm import get_config_space
 
 
@@ -178,7 +178,8 @@ if __name__ == "__main__":
     LOCAL_WORLD_SIZE = int(os.environ.get("LOCAL_WORLD_SIZE", 1))
 
     args = parse_args()
-    tp_group = initialize_distributed(args.seed)
+    # tp_group = initialize_distributed(args.seed)
+    tp_group, args.gloo_global_group = initialize_distributed(args.seed, init_cpu_group=True)
     if torch.cuda.get_device_capability()[0] < 9:
         assert not args.persistent, "persistent is not supported on cuda < 9.0"
 
@@ -286,12 +287,15 @@ if __name__ == "__main__":
 
         reduce_scatter_gb = M * args.N * output_dtype.itemsize / 2**30 * (WORLD_SIZE - 1) / WORLD_SIZE
         torch_reduce_scatter_gbps = reduce_scatter_gb / torch_rs_ms * 1e3
-        print(
-            f"triton #{RANK} GEMM full {triton_tflops:0.2f} TFLOPS, read {triton_gemm_mem_read_gbps:0.2f} GB/s, write {triton_gemm_mem_write_gbps:0.2f} GB/s"
-        )
-        print(
-            f"torch  #{RANK} GEMM only {torch_tflops:0.2f} TFLOPS, read {torch_gemm_mem_read_gbps:0.2f} GB/s, write {torch_gemm_mem_write_gbps:0.2f} GB/s, ReduceScatter only {torch_reduce_scatter_gbps:0.2f} GB/s"
-        )
+        # print(
+        #     f"triton #{RANK} GEMM full {triton_tflops:0.2f} TFLOPS, read {triton_gemm_mem_read_gbps:0.2f} GB/s, write {triton_gemm_mem_write_gbps:0.2f} GB/s"
+        # )
+        print_ordered(f"triton #{RANK} GEMM full {triton_tflops:0.2f} TFLOPS, read {triton_gemm_mem_read_gbps:0.2f} GB/s, " \
+            f"write {triton_gemm_mem_write_gbps:0.2f} GB/s",
+            group=args.gloo_global_group)
+        print_ordered(f"torch  #{RANK} GEMM only {torch_tflops:0.2f} TFLOPS, read {torch_gemm_mem_read_gbps:0.2f} GB/s, " \
+            f"write {torch_gemm_mem_write_gbps:0.2f} GB/s, ReduceScatter only {torch_reduce_scatter_gbps:0.2f} GB/s",
+            group=args.gloo_global_group)
 
     gemm_rs_op.ctx.finalize()
     finalize_distributed()
