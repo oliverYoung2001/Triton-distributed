@@ -249,6 +249,9 @@ if __name__ == "__main__":
         finalize_distributed()
         exit(0)
 
+    profiler_with_tensorboard = True
+    # profiler_with_tensorboard = False
+
     for M in M_list:
         A, weight, bias = _make_data(M)
         exp_name = f"{M}x{args.N}x{args.K}_{os.environ['TORCHELASTIC_RUN_ID']}"
@@ -259,7 +262,8 @@ if __name__ == "__main__":
 
             wait_until_max_gpu_clock_or_warning()
             triton_output, triton_duration_ms = perf_func(partial(gemm_rs_op.forward, A, weight, bias),
-                                                          iters=args.iters, warmup_iters=args.warmup)
+                                                          iters=args.iters, warmup_iters=args.warmup,
+                                                          profiler_with_tensorboard=profiler_with_tensorboard, args=args)
             wait_until_max_gpu_clock_or_warning()
             _, torch_gemm_ms = perf_func(lambda: torch_gemm_only(A, weight, bias), iters=args.iters,
                                          warmup_iters=args.warmup)
