@@ -224,7 +224,7 @@ def kernel_gemm_rs_producer_persistent(
     K,
     barrier_ptr,
     counter_ptr,
-    FUSE_SCATTER: tl.constexpr,
+    FUSE_SCATTER: tl.constexpr, # False
     LOCAL_WORLD_SIZE: tl.constexpr,
     WORLD_SIZE: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
@@ -289,7 +289,7 @@ def kernel_gemm_rs_producer_persistent(
         accumulator = tl.dot(a, b.T, accumulator)
 
         if ki == k_tiles - 1:
-            if not FUSE_SCATTER:
+            if not FUSE_SCATTER:    # True
                 if EPILOGUE_SUBTILE:
                     acc = tl.reshape(accumulator, (BLOCK_SIZE_M, 2, BLOCK_SIZE_N // 2))
                     acc = tl.permute(acc, (0, 2, 1))
@@ -511,7 +511,7 @@ def gemm_rs_producer_persistent(A: torch.Tensor, B: torch.Tensor, C: torch.Tenso
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     ), )
     assert B.stride(0) == 1
-    if not reduce_st:
+    if not reduce_st:   # True
         kernel_gemm_rs_producer_persistent[grid](
             A,
             B,
@@ -605,7 +605,7 @@ def update_triton_config(M, N, K, dtype: torch.dtype, world_size, local_world_si
 def gemm_rs_op(A: torch.Tensor, B: torch.Tensor, ctx: GEMMReduceScatterTensorParallelContext,
                gemm_config: triton.Config, persistent: bool = True, fuse_scatter: bool = False,
                reduce_st: bool = False):
-    if fuse_scatter:
+    if fuse_scatter:    # False
         assert ctx.rs_ctx.nnodes == 1, "`fuse_scatter` does not support multi node`"
     world_size = ctx.rs_ctx.world_size
     local_world_size = ctx.rs_ctx.local_world_size
@@ -622,7 +622,7 @@ def gemm_rs_op(A: torch.Tensor, B: torch.Tensor, ctx: GEMMReduceScatterTensorPar
     current_stream = torch.cuda.current_stream()
     rs_stream.wait_stream(current_stream)
 
-    if reduce_st:
+    if reduce_st:   # False
         assert ctx.rs_ctx.nnodes == 1, "`reduce_st` does not support multi node`"
         assert persistent, "`reduce_st` only support persistent mode"
         assert fuse_scatter, "`reduce_st` only support fuse_scatter mode"
@@ -653,7 +653,7 @@ def gemm_rs_op(A: torch.Tensor, B: torch.Tensor, ctx: GEMMReduceScatterTensorPar
 
         triton.set_allocator(alloc_fn)
 
-        if persistent:
+        if persistent:  # True
             gemm_rs_producer_persistent(A, B, gemm_out, scatter_signal, workspace, world_size, local_world_size,
                                         fuse_scatter, num_gemm_sms, gemm_config)
         else:
@@ -661,7 +661,7 @@ def gemm_rs_op(A: torch.Tensor, B: torch.Tensor, ctx: GEMMReduceScatterTensorPar
             gemm_rs_producer_non_persistent(A, B, gemm_out, scatter_signal, workspace, world_size, local_world_size,
                                             fuse_scatter, gemm_config)
 
-        if not fuse_scatter:
+        if not fuse_scatter:    # True
             with torch.cuda.stream(rs_stream):
                 # don't allocate memory on other stream: error-prune
                 reduce_scatter_2d_op(gemm_out, ctx.rs_ctx, output)
@@ -725,7 +725,7 @@ def get_gemm_rs_config_space():
     prune_fn=prune_fn,
 )
 def gemm_rs(A: torch.Tensor, B: torch.Tensor, ctx: GEMMReduceScatterTensorParallelContext, gemm_config: triton.Config,
-            persistent=True, fuse_scatter=False, reduce_st=False):
+            persistent=True, fuse_scatter=False, reduce_st=False):  # fuse_scatter=False, reduce_st=False
     """GEMM Reduce-Scatter for Multi-Node
 
     computes local GEMM (A x B) to generate partial results, followed by `reduce_scatter` to produce c

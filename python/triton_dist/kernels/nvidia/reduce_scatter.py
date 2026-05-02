@@ -746,7 +746,7 @@ def ring_reduce_tma(
 
     triton.set_allocator(alloc_fn)
 
-    if num_sms == -1:
+    if num_sms == -1:   # For last node
         grid = lambda META: (triton.cdiv(M_per_split, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]), )
         kernel_ring_reduce_tma[grid](
             input,
@@ -804,7 +804,8 @@ def reduce_scatter_multi_node(input: torch.Tensor, ctx: ReduceScatter2DContext, 
 
     # directly reduce_scatter to output if nnodes == 1
     out_each_node = output if ctx.nnodes == 1 else None
-    if not has_fullmesh_nvlink():
+    # print(f'has_fullmesh_nvlink(): {has_fullmesh_nvlink()}')    # True
+    if not has_fullmesh_nvlink():   # False
         rs_result_per_node = reduce_scatter_for_each_node_ring(input, ctx, out_each_node)
     else:
         rs_result_per_node = reduce_scatter_for_each_node(input, ctx, out_each_node)

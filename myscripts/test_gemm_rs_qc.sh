@@ -120,7 +120,7 @@ set -x
 ${NSIGHT_CMD} \
 $SRUN_SCRIPT \
 bash ./scripts/launch.sh python/triton_dist/test/nvidia/test_gemm_rs.py \
-    -M 8192 -N 8192 -K 28672 \
+    -M 8192 -N 8192 -K 28672 --autotune \
     2>&1 | tee logs/${EXP_NAME}/output_${TIMESTAMP}.log
 # --check
 # hostname \
