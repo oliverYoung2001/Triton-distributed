@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-python}"
+WHEELHOUSE="${WHEELHOUSE:-${ROOT_DIR}/wheelhouse-triton-dist}"
+CONSTRAINT="${CONSTRAINT:-${ROOT_DIR}/tmp/pip_install_constraint.txt}"
+
+PKGS=(
+  "setuptools>=40.8.0"
+  "wheel"
+  "packaging"
+  "cmake>=3.20,<4.0"
+  "ninja>=1.11.1"
+  "pybind11>=2.13.1"
+  "lit"
+  "cuda.core==0.2.0"
+  "cuda-python>=12.0"
+  "nvidia-nvshmem-cu12>=3.3.9"
+  "Cython>=0.29.24"
+  "nvshmem4py-cu12>=0.1.2"
+  "nvidia-ml-py>=12.0"
+  "autopep8"
+  "isort"
+  "numpy"
+  "pytest"
+  "pytest-forked"
+  "pytest-xdist"
+  "scipy>=1.7.1"
+  "llnl-hatchet"
+  "transformers"
+  "tqdm"
+  "matplotlib"
+  "pandas"
+  "tabulate"
+  "chardet"
+  "expecttest"
+  "setuptools-scm>=8"
+  "prettytable"
+  "pytest-assume"
+  "recommonmark"
+  "myst_parser"
+  "sphinx-markdown-tables"
+  "sphinx-rtd-theme"
+  "sphinx-gallery>=0.10.1"
+  "sphinx>=7.2.6"
+  "sphinx-autodoc-typehints>=1.25.0"
+  "sphinx-copybutton>=0.5.2"
+  "sphinxcontrib-napoleon>=0.7"
+  "Pygments>=2.17.0"
+)
+
+usage() {
+  cat <<EOF
+Usage:
+  $0 download   # run on a machine with internet, then copy ${WHEELHOUSE} to g42
+  $0 install    # run on g42 after the wheelhouse is available
+
+Environment overrides:
+  PYTHON_BIN=/path/to/python
+  WHEELHOUSE=/path/to/wheelhouse
+  CONSTRAINT=/path/to/pip_install_constraint.txt
+  MAX_JOBS=40
+EOF
+}
+
+if [[ ! -f "${CONSTRAINT}" ]]; then
+  echo "Constraint file not found: ${CONSTRAINT}" >&2
+  exit 1
+fi
+
+case "${MODE}" in
+  download)
+    mkdir -p "${WHEELHOUSE}"
+    "${PYTHON_BIN}" -m pip download \
+      --dest "${WHEELHOUSE}" \
+      --constraint "${CONSTRAINT}" \
+      "${PKGS[@]}"
+    ;;
+  install)
+    "${PYTHON_BIN}" -m pip install \
+      --no-index \
+      --find-links "${WHEELHOUSE}" \
+      --constraint "${CONSTRAINT}" \
+      "${PKGS[@]}"
+
+    MAX_JOBS="${MAX_JOBS:-40}" TRITON_OFFLINE_BUILD=1 "${PYTHON_BIN}" -m pip install \
+      --no-index \
+      --find-links "${WHEELHOUSE}" \
+      --constraint "${CONSTRAINT}" \
+      --editable "${ROOT_DIR}/python[build,tests,tutorials]" \
+      --verbose \
+      --no-build-isolation \
+      --use-pep517
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

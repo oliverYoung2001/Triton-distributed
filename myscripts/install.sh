@@ -20,7 +20,30 @@ git submodule update --init --recursive
 # Other dependencies
 # pip3 install setuptools==69.0.0 wheel pybind11
 python -m pip install setuptools wheel pybind11
-python -m pip install ninja cmake   # [NOTE] Added by yhy
+#   Extra dependencies  # [NOTE] Added by yhy
+# extras_require={
+#     "build": ["cmake>=3.20,<4.0", "lit", "ninja", "pybind11"],
+#     "tests": [
+#         "autopep8",
+#         "isort",
+#         "numpy",
+#         "pytest",
+#         "pytest-forked",
+#         "pytest-xdist",
+#         "scipy>=1.7.1",
+#         "llnl-hatchet",
+#         "transformers",
+#         "tqdm",
+#     ] + DEPS_TEST,
+#     "tutorials": [
+#         "matplotlib",
+#         "pandas",
+#         "tabulate",
+#         "chardet",
+#     ],
+# },
+python -m pip install lit ninja "cmake>=3.20,<4.0" autopep8 isort numpy pytest pytest-forked \
+    pytest-xdist scipy>=1.7.1 llnl-hatchet transformers tqdm
 # Build Triton-distributed
 #   Remove triton installed with torch
 python -m pip uninstall triton
@@ -35,8 +58,8 @@ rm -rf /usr/local/lib/python3.12/dist-packages/triton   # No this folder
 cd /workspace/Triton-distributed
 export USE_TRITON_DISTRIBUTED_AOT=0
 echo 'numpy<2' > ./tmp/pip_install_constraint.txt
-salloc -p h01 -N 1 --gres=gpu:1 --cpus-per-task=100
-MAX_JOBS=200 python -m pip install -c ./tmp/pip_install_constraint.txt -e python[build,tests,tutorials] \
+salloc -p h01 -N 1 --gres=gpu:1 --cpus-per-task=40
+MAX_JOBS=40 python -m pip install -c ./tmp/pip_install_constraint.txt -e python[build,tests,tutorials] \
     --verbose --no-build-isolation --use-pep517 \
     2>&1 | tee ./logs/triton_dist_install.log
 
