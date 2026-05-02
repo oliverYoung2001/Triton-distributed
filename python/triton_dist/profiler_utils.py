@@ -37,7 +37,8 @@ import json
 import string
 import re
 import gzip
-
+import os
+from datetime import datetime
 
 def load_json(json_file):
     with open(json_file, "r", encoding="utf-8", errors="replace") as file:
@@ -352,19 +353,71 @@ def sleep_async(duration_ms: int):
     torch.cuda._sleep(int(clock_rate_hz * duration_ms / 1000))
 
 
-def perf_func(func, iters, warmup_iters):
+def perf_func(func, iters, warmup_iters, profiler_with_tensorboard=False, args=None):
     start_event = torch.cuda.Event(enable_timing=True)
     stop_event = torch.cuda.Event(enable_timing=True)
-    # Warmup
-    for _ in range(warmup_iters):
-        _ = func()
-    torch.cuda.synchronize()
-    # Benchmark
-    start_event.record()
-    for _ in range(iters):
-        output = func()
-    stop_event.record()
-    torch.cuda.synchronize()
+    if profiler_with_tensorboard:
+        rank = torch.distributed.get_rank()
+        WORLD_SIZE = torch.distributed.get_world_size()
+
+        CLUSTER_INFO = os.getenv('CLUSTER_INFO', 'UNKNOWN')
+        PLATFORM = os.getenv('PLATFORM', 'UNKNOWN')
+        EXP_NAME = os.getenv("EXP_NAME", "UNKNOWN")
+        TB_DIR_list = [None]
+        if rank == 0:
+            TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
+            TB_DIR = f"./logs/tb/{EXP_NAME}_w{WORLD_SIZE}_{TIMESTAMP}"
+            os.makedirs(TB_DIR, exist_ok=True)
+            TB_DIR_list[0] = TB_DIR
+        torch.distributed.broadcast_object_list(TB_DIR_list, src=0, group=args.gloo_global_group)
+        TB_DIR = TB_DIR_list[0]
+
+        WAIT, WARMUP_PROFILE, ACTIVE, REPEAT = 1, warmup_iters - 1, iters, 1
+        TOTAL_TURNS = (WAIT + WARMUP_PROFILE + ACTIVE) * REPEAT
+        TRACE_NAME = (
+            f"{CLUSTER_INFO}_{PLATFORM}_{EXP_NAME}"
+            f"_w{WORLD_SIZE}_r{rank}"
+        )
+        prof = torch.profiler.profile(
+            activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+            schedule=torch.profiler.schedule(wait=WAIT, warmup=WARMUP_PROFILE, active=ACTIVE, repeat=REPEAT),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                dir_name=TB_DIR,
+                worker_name=TRACE_NAME,
+            ),
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True,
+        )
+        prof.start()
+        for iter_id in range(TOTAL_TURNS):
+            # placeholder_op(stream=main_stream)
+            if iter_id == WAIT + WARMUP_PROFILE:
+                start_event.record()
+            # all_wait_main_stream(get_stream_list(), main_stream)
+            # exe_func()
+            # main_stream_wait_all(get_stream_list(), main_stream)
+            output = func()
+            if iter_id == TOTAL_TURNS // REPEAT - 1:
+                stop_event.record()
+            # torch.cuda.synchronize()
+            # if rank in profile_ranks:
+            prof.step()
+            # if WAIT + WARMUP_PROFILE <= iter_id % (TOTAL_TURNS // REPEAT):
+            #     accu_time += start.elapsed_time(end)
+        # if rank in profile_ranks:
+        prof.stop()
+    else:
+        # Warmup
+        for _ in range(warmup_iters):
+            _ = func()
+        torch.cuda.synchronize()
+        # Benchmark
+        start_event.record()
+        for _ in range(iters):
+            output = func()
+        stop_event.record()
+        torch.cuda.synchronize()
     duration_ms = start_event.elapsed_time(stop_event)
     return output, duration_ms / iters
 

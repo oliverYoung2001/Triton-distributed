@@ -386,7 +386,7 @@ def _wait_eq_cuda(signal_tensor: torch.Tensor, signal: int, stream: Optional[tor
 
 def _set_signal_cuda(signal_tensor: torch.Tensor, signal: int, stream: Optional[torch.cuda.Stream] = None):
     stream = stream or torch.cuda.current_stream()
-    if signal_tensor.dtype == torch.int32:
+    if signal_tensor.dtype == torch.int32:  # True
         (err, ) = cuda.cuStreamWriteValue32(
             stream.cuda_stream,
             signal_tensor.data_ptr(),

@@ -1,3 +1,7 @@
+# yhy
+logs/
+.codex
+
 # Pytest
 pytest.ini
 

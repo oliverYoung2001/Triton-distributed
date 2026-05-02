@@ -30,7 +30,7 @@ import torch
 from triton_dist.profiler_utils import group_profile, perf_func
 from triton_dist.test.utils import LAYER_CONFIGS, assert_allclose
 from triton_dist.kernels.nvidia import ag_gemm, create_ag_gemm_context
-from triton_dist.utils import (dist_print, finalize_distributed, initialize_distributed, rand_tensor)
+from triton_dist.utils import (dist_print, finalize_distributed, initialize_distributed, rand_tensor, print_ordered)
 from triton_dist.kernels.nvidia.gemm_perf_model import get_tensorcore_tflops
 from triton_dist.nv_utils import get_intranode_max_speed_gbps
 
@@ -142,14 +142,21 @@ def perf_ag_gemm(args):
     A, B = make_data(M, N, K, dtype, args.trans_b, args.default_group)
 
     ctx = create_ag_gemm_context(M, N, K, dtype, rank, num_ranks, LOCAL_WORLD_SIZE)
+    if rank == 0:
+        ctx.print_all_variables()
+        print(f'')
 
     if not args.local_copy:
         ctx.symm_workspace[rank * M // num_ranks:min(M, (rank + 1) * M // num_ranks)].copy_(A)
 
     def func():
         return ag_gemm(A, B, ctx=ctx, autotune=args.autotune, local_copy=args.local_copy)
+    
+    profiler_with_tensorboard = True
+    # profiler_with_tensorboard = False
 
-    C, duration_ms = perf_func(func, iters=10, warmup_iters=5)
+    C, duration_ms = perf_func(func, iters=10, warmup_iters=5, 
+        profiler_with_tensorboard=profiler_with_tensorboard, args=args)
     dist_print(f"rank{RANK}: {duration_ms:0.2f} ms/iter", need_sync=True, allowed_ranks=list(range(WORLD_SIZE)))
 
     flops = 2 * M * N_per_rank * K
@@ -159,12 +166,13 @@ def perf_ag_gemm(args):
     memory_write = dtype.itemsize * M * N_per_rank
     memory_write_gbps = memory_write / 2**30 / duration_ms * 1e3
     memcpy_bus_bw_gbps = M * K * dtype.itemsize / 2**30 / duration_ms * 1e3 * (WORLD_SIZE - 1) / WORLD_SIZE
-    print(
-        f"rank{RANK}: GEMM {tflops:.2f} TFLOPS, {memory_read_gbps:.2f} GB/s read, {memory_write_gbps:.2f} GB/s write. AllGather {memcpy_bus_bw_gbps:.2f} GB/s"
-    )
-    print(
-        f"GEMM ideal TFLOPS: {get_tensorcore_tflops(dtype)} TFLOPS.  AllGather ideal bus BW: {get_intranode_max_speed_gbps():0.1f} GB/s"
-    )
+    print_ordered(f"rank{RANK}: GEMM {tflops:.2f} TFLOPS, {memory_read_gbps:.2f} GB/s read, {memory_write_gbps:.2f} GB/s write. " \
+        f"AllGather {memcpy_bus_bw_gbps:.2f} GB/s", 
+        group=args.gloo_global_group)
+    if rank == 0:
+        print(
+            f"GEMM ideal TFLOPS: {get_tensorcore_tflops(dtype)} TFLOPS.  AllGather ideal bus BW: {get_intranode_max_speed_gbps():0.1f} GB/s"
+        )
 
     with group_profile(f"ag_gemm_perf_{os.environ['TORCHELASTIC_RUN_ID']}", args.profile, group=args.default_group):
         for i in range(20):
@@ -185,7 +193,7 @@ if __name__ == "__main__":
     WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
     LOCAL_WORLD_SIZE = int(os.environ["LOCAL_WORLD_SIZE"])
     torch.cuda.set_device(LOCAL_RANK)
-    args.default_group = initialize_distributed()
+    args.default_group, args.gloo_global_group = initialize_distributed(init_cpu_group=True)
 
     args.rank = RANK
     args.num_ranks = WORLD_SIZE

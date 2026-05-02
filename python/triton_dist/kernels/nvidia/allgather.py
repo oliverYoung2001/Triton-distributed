@@ -209,7 +209,7 @@ def cp_engine_producer_all_gather_intra_node(
     debug=False,
     all_gather_method: AllGatherMethod = AllGatherMethod.All2All_IntraNode,
 ):
-    if all_gather_method == AllGatherMethod.All2All_IntraNode:
+    if all_gather_method == AllGatherMethod.All2All_IntraNode:  # True; all_gather_method: AllGatherMethod.All2All_IntraNode
         fn = cp_engine_producer_all_gather_full_mesh_pull
     elif all_gather_method == AllGatherMethod.Ring1D_IntraNode:
         fn = cp_engine_producer_all_gather_ring_push_1d

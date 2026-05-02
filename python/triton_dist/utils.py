@@ -47,7 +47,16 @@ import triton_dist
 import dataclasses
 import shutil
 
-
+def print_ordered(message, group):
+    if torch.distributed.is_initialized():
+        gathered = [None for _ in range(torch.distributed.get_world_size(group))] if torch.distributed.get_rank() == 0 else None
+        torch.distributed.gather_object(message, object_gather_list=gathered, dst=0, group=group)
+        if torch.distributed.get_rank() == 0:
+            for msg in gathered:
+                print(msg, flush=True)
+    else:
+        print(message, flush=True)
+      
 def is_cuda():
     """Checks if 'nvidia-smi' is available on the system's PATH."""
     if shutil.which("nvidia-smi"):
@@ -332,7 +341,7 @@ def mori_shmem_barrier_all_on_stream(stream: Optional[torch.cuda.Stream] = None)
     mori_shmem.shmem_barrier_on_stream(stream)
 
 
-def initialize_distributed(seed=None, initialize_shmem: bool = True) -> torch.distributed.ProcessGroup:
+def initialize_distributed(seed=None, initialize_shmem: bool = True, init_cpu_group: bool = False) -> torch.distributed.ProcessGroup:
     RANK = int(os.environ.get("RANK", 0))
     LOCAL_RANK = int(os.environ.get("LOCAL_RANK", 0))
     WORLD_SIZE = int(os.environ.get("WORLD_SIZE", 1))
@@ -364,7 +373,11 @@ def initialize_distributed(seed=None, initialize_shmem: bool = True) -> torch.di
                 init_mori_by_torch_process_group(pg)
             else:
                 raise ValueError(f"Invalid SHMEM backend: '{backend}'")
-    return pg
+    if init_cpu_group:
+        gloo_global_group = torch.distributed.new_group(ranks=list(range(WORLD_SIZE)), backend='gloo')
+        return pg, gloo_global_group
+    else:
+        return pg
 
 
 def get_triton_dist_world():

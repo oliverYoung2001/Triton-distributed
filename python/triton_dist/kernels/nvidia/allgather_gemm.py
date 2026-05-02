@@ -204,8 +204,8 @@ def kernel_consumer_gemm_persistent(a_ptr, b_ptr, c_ptr,  #
                                     BLOCK_SIZE_M: tl.constexpr,  #
                                     BLOCK_SIZE_N: tl.constexpr,  #
                                     BLOCK_SIZE_K: tl.constexpr,  #
-                                    GROUP_SIZE_M: tl.constexpr,  #
-                                    EPILOGUE_SUBTILE: tl.constexpr,  #
+                                    GROUP_SIZE_M: tl.constexpr,  # 8
+                                    EPILOGUE_SUBTILE: tl.constexpr,  # True
                                     NUM_SMS: tl.constexpr, ready_value: tl.constexpr = 1,
                                     LOCAL_WORLD_SIZE: tl.constexpr = 8):  #
     # Matmul using TMA and device-side descriptor creation
@@ -502,6 +502,33 @@ class AllGatherGEMMTensorParallelContext:
         nvshmem_barrier_all_on_stream(torch.cuda.current_stream())
         torch.cuda.synchronize()
 
+    def print_all_variables(self, summarize_tensors: bool = True):
+        def format_value(value):
+            if summarize_tensors and isinstance(value, torch.Tensor):
+                return (f"Tensor(shape={tuple(value.shape)}, dtype={value.dtype}, "
+                        f"device={value.device}, stride={value.stride()})")
+            if summarize_tensors and isinstance(value, list) and all(isinstance(item, torch.Tensor) for item in value):
+                return [
+                    f"Tensor(shape={tuple(item.shape)}, dtype={item.dtype}, device={item.device}, stride={item.stride()})"
+                    for item in value
+                ]
+            return value
+        print(f'AllGatherGEMMTensorParallelContext:')
+        printed_names = set()
+        for name in self.__dataclass_fields__:
+            print(f"{name}: {format_value(getattr(self, name))}")
+            printed_names.add(name)
+
+        for name, value in self.__dict__.items():
+            if name not in printed_names:
+                print(f"{name}: {format_value(value)}")
+                printed_names.add(name)
+
+        for name, value in self.__class__.__dict__.items():
+            if name.startswith("_") or name in printed_names or callable(value):
+                continue
+            print(f"{name}: {format_value(getattr(self, name))}")
+
     def finalize(self):
         nvshmem_free_tensor_sync(self.symm_workspace)
         nvshmem_free_tensor_sync(self.symm_barrier)
@@ -605,7 +632,9 @@ def ag_gemm(
                                ctx.symm_barrier, M_per_rank, K, ctx.phase, is_internode=ctx.is_multinode,
                                use_cooperative=use_cooperative, local_copy=local_copy)
     ctx.phase += 2
-
+    # if torch.distributed.get_rank() == 0:
+    #     print(f'gemm_config: {gemm_config}', flush=True)
+        # gemm_config: BLOCK_SIZE_M: 128, BLOCK_SIZE_N: 128, BLOCK_SIZE_K: 64, GROUP_SIZE_M: 8, EPILOGUE_SUBTILE: True, num_warps: 4, num_ctas: 1, num_stages: 3, maxnreg: None
     rowise_ag_gemm_dispatcher(
         A,
         B,
@@ -659,12 +688,12 @@ def rowise_ag_gemm_dispatcher(
             debug=debug,
         )
 
-    if straggler_option and ctx.rank == straggler_option[0]:
+    if straggler_option and ctx.rank == straggler_option[0]:    # None
         torch.cuda._sleep(straggler_option[1])
 
     M_per_rank, K = A.shape
     M = M_per_rank * ctx.num_ranks
-    persistent = torch.cuda.get_device_capability()[0] >= 9
+    persistent = torch.cuda.get_device_capability()[0] >= 9 # True for Hopper(9.0)
     if not persistent:
         grid = lambda META: (triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(ctx.N_per_rank, META["BLOCK_SIZE_N"]), )
         kernel_consumer_gemm_non_persistent[grid](
@@ -692,8 +721,8 @@ def rowise_ag_gemm_dispatcher(
 
         triton.set_allocator(alloc_fn)
 
-        internode_ag_sm = ctx.n_nodes - 1
-        gemm_sm = ctx.max_gemm_sm - internode_ag_sm
+        internode_ag_sm = ctx.n_nodes - 1   # 1 - 1 = 0
+        gemm_sm = ctx.max_gemm_sm - internode_ag_sm # 78 - 0 = 78
         grid = lambda META: (min(
             gemm_sm,
             triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(ctx.N_per_rank, META["BLOCK_SIZE_N"]),
