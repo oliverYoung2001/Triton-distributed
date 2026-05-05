@@ -42,8 +42,8 @@ python -m pip install setuptools wheel pybind11
 #         "chardet",
 #     ],
 # },
-python -m pip install lit ninja "cmake>=3.20,<4.0" autopep8 isort numpy pytest pytest-forked \
-    pytest-xdist scipy>=1.7.1 llnl-hatchet transformers tqdm
+python -m pip install lit ninja "cmake>=3.20,<4.0" autopep8 isort "numpy<2" pytest pytest-forked \
+    pytest-xdist scipy>=1.7.1 llnl-hatchet transformers tqdm nvidia-ml-py>=12.0 tabulate chardet
 # Build Triton-distributed
 #   Remove triton installed with torch
 python -m pip uninstall triton
@@ -56,10 +56,11 @@ python -m pip install cuda.core==0.2.0 cuda-python==12.4 nvidia-nvshmem-cu12==3.
 rm -rf /usr/local/lib/python3.12/dist-packages/triton   # No this folder
 #   Install Triton-distributed
 cd /workspace/Triton-distributed
-export USE_TRITON_DISTRIBUTED_AOT=0
 echo 'numpy<2' > ./tmp/pip_install_constraint.txt
 salloc -p h01 -N 1 --gres=gpu:1 --cpus-per-task=40
-MAX_JOBS=40 python -m pip install -c ./tmp/pip_install_constraint.txt -e python[build,tests,tutorials] \
+# export USE_TRITON_DISTRIBUTED_AOT=0
+USE_TRITON_DISTRIBUTED_AOT=0 MAX_JOBS=1 \
+python -m pip install -c ./tmp/pip_install_constraint.txt -e python[build,tests,tutorials] \
     --verbose --no-build-isolation --use-pep517 \
     2>&1 | tee ./logs/triton_dist_install.log
 

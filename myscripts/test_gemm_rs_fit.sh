@@ -20,9 +20,11 @@ WORLD_SIZE=2
 # WORLD_SIZE=16
 # WORLD_SIZE=32
 
-export PLATFORM=H100
-PARTITION=h01
-# NODES="bjdb-h20-node-020"
+export PLATFORM=A100
+PARTITION=a01
+NODES=g51
+# export PLATFORM=H100
+# PARTITION=h01
 
 # # If this shell was left from an expired salloc/sbatch session, srun will try to
 # # attach to that stale allocation instead of creating a new one.
@@ -54,11 +56,10 @@ export CLUSTER_INFO="Fit"
 # mkdir -p $TB_DIR
 # export CUDA_DEVICE_MAX_CONNECTIONS=1    # Important for CC Overlap
 # export CUDA_LAUNCH_BLOCKING=1   # [DEBUG]
-# Specific settings on Fit
+# Specific settings on Fit  # TODO
 # export NVSHMEM_HCA_LIST=^mlx5_2
-# export NVSHMEM_HCA_LIST=mlx5_0,mlx5_3,mlx5_4,mlx5_7
-export NVSHMEM_HCA_LIST=mlx5_0:1,mlx5_3:1,mlx5_4:1,mlx5_7:1
-export NCCL_IB_HCA=mlx5_0,mlx5_3,mlx5_4,mlx5_7
+# export NVSHMEM_HCA_LIST=mlx5_0:1,mlx5_3:1,mlx5_4:1,mlx5_7:1
+# export NCCL_IB_HCA=mlx5_0,mlx5_3,mlx5_4,mlx5_7
 # CPUS=${CPUS:-${SLURM_CPUS_ON_NODE:-200}}   # debug/long allocations currently cap this at 200
 # CPU_PER_TASK=$((CPUS / NPROC_PER_NODE ))   # [NOTE]
 # # Network/NCCL Args
@@ -75,7 +76,8 @@ export NCCL_IB_HCA=mlx5_0,mlx5_3,mlx5_4,mlx5_7
 # Network/NCCL/NVSHMEM Args
 export NCCL_SOCKET_IFNAME=ibs20
 export NVSHMEM_BOOTSTRAP_UID_SOCK_IFNAME=ibs20
-export NVSHMEM_DISABLE_CUDA_VMM=0
+export NVSHMEM_DISABLE_CUDA_VMM=0   # [ERROR] Why is it wrong?
+export NVSHMEM_DISABLE_CUDA_VMM=1   # Correct!
 # export NVSHMEM_ENABLE_NIC_PE_MAPPING=1    # Useless
 # PROFILING Args
 #   Nsight
