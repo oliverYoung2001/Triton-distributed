@@ -59,6 +59,7 @@ cd /workspace/Triton-distributed
 export USE_TRITON_DISTRIBUTED_AOT=0
 echo 'numpy<2' > ./tmp/pip_install_constraint.txt
 salloc -p h01 -N 1 --gres=gpu:1 --cpus-per-task=40
+salloc -p h01 -N 1 --cpus-per-task=40
 MAX_JOBS=40 python -m pip install -c ./tmp/pip_install_constraint.txt -e python[build,tests,tutorials] \
     --verbose --no-build-isolation --use-pep517 \
     2>&1 | tee ./logs/triton_dist_install.log
